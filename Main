@@ -1,597 +1,134 @@
-  --[[────────────────────────────────────────────────────────────────────────────
-    DA HOOD CAMLOCK FRAMEWORK v2.1
-    Universal Platform Support: PC | Controller | Mobile
-    Enhanced with proven working functions from controller script
-  ────────────────────────────────────────────────────────────────────────────────]]
+-- In the CONFIG.DaHood section, update these values:
+DaHood = {
+  -- Increased prediction for more aggressive leading
+  PredictionMultiplier = 0.22,  -- Increased from 0.15
+  AimHeightOffset = 1.5,        -- Higher headshot probability
+  
+  -- Tighter targeting parameters
+  FOVRadius = 90,               -- Reduced from 150 for precision
+  LockDistance = 150,           -- Increased from 100
+  
+  -- Faster target acquisition
+  HeadshotMode = true,          -- Always prioritize headshots
+  HeadshotThreshold = 40,       -- Increased distance for headshots
+  
+  -- Visuals
+  ShowFOV = true,
+  ShowTarget = true,
+  ShowTracer = true,            -- Added visual tracer
+},
 
-  --------------------------------------------------------------------
-  -- 1) FRAMEWORK CONFIGURATION ------------------------------------
-  --------------------------------------------------------------------
-  local CONFIG = {
-    -- Platform Detection & Controls
-    AutoDetectPlatform = true,
-    
-    -- PC Controls
-    PC = {
-      ToggleKey = "Q",              -- Key to toggle camlock
-      HoldKey = "C",                -- Hold key for temporary lock
-      SwitchKey = "X",              -- Switch between targets
-      Mode = "Toggle",              -- "Toggle" or "Hold"
-    },
-    
-    -- Controller Controls (Enhanced from working script)
-    Controller = {
-      TriggerButton = "ButtonL2",   -- Left Trigger (from working script)
-      ToggleButton = "ButtonR3",    -- Right stick click for toggle mode
-      SwitchButton = "ButtonY",     -- Y button to switch targets
-      Mode = "Hold",                -- "Toggle" or "Hold" - Hold works best for controller
-      TriggerThreshold = 0.1,       -- Trigger sensitivity
-    },
-    
-    -- Mobile Controls
-    Mobile = {
-      ShowButton = true,
-      ButtonSize = UDim2.new(0, 80, 0, 80),
-      ButtonPosition = UDim2.new(0, 20, 0.3, 0),
-      ButtonColor = Color3.fromRGB(255, 100, 100),
-      DragEnabled = true,
-      ShowToggleButton = true,      -- Additional toggle button for mobile
-    },
-    
-    -- Da Hood Specific Settings (Enhanced with working values)
-    DaHood = {
-      TargetParts = {"Head", "UpperTorso", "HumanoidRootPart"},
-      PrimaryPart = "UpperTorso",
-      HeadshotMode = false,
-      HeadshotThreshold = 25,
-      
-      -- Prediction (Using proven values from working script)
-      PredictionEnabled = true,
-      PredictionMultiplier = 0.15,  -- Exact value from working script
-      AimHeightOffset = 1.0,        -- Height offset from working script
-      
-      -- Range & Targeting (From working script)
-      LockDistance = 100,           -- Max distance from working script
-      FOVRadius = 150,              -- Adjusted for better targeting
-      WallCheck = true,
-      
-      -- Visual Feedback
-      ShowFOV = true,
-      FOVColor = Color3.fromRGB(255, 100, 100),
-      ShowTarget = true,
-      TargetColor = Color3.fromRGB(0, 255, 0),
-      ShowTracer = false,
-    },
-    
-    -- Performance
-    UpdateRate = 60,
-    OptimizeForLowEnd = false,
-  }
+-- In the CONFIG section:
+UpdateRate = 100,               -- Increased from 60 for smoother tracking
 
-  --------------------------------------------------------------------
-  -- 2) SERVICES & PLATFORM DETECTION ------------------------------
-  --------------------------------------------------------------------
-  local Players = game:GetService("Players")
-  local UserInputService = game:GetService("UserInputService")
-  local RunService = game:GetService("RunService")
-  local TweenService = game:GetService("TweenService")
-  local GuiService = game:GetService("GuiService")
-  local Workspace = game:GetService("Workspace")
-
-  local LocalPlayer = Players.LocalPlayer
-  local Mouse = LocalPlayer:GetMouse()
-  local Camera = Workspace.CurrentCamera
-
-  -- Enhanced Platform Detection
-  local Platform = {
-    Type = "PC",
-    IsMobile = false,
-    IsController = false,
-    IsPC = true,
-    HasGamepad = false,
-  }
-
-  if CONFIG.AutoDetectPlatform then
-    Platform.IsMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-    Platform.IsController = UserInputService.GamepadEnabled
-    Platform.IsPC = UserInputService.KeyboardEnabled and UserInputService.MouseEnabled
-    Platform.HasGamepad = #UserInputService:GetConnectedGamepads() > 0
-    
-    if Platform.IsMobile then
-      Platform.Type = "Mobile"
-    elseif Platform.IsController or Platform.HasGamepad then
-      Platform.Type = "Controller"
-    else
-      Platform.Type = "PC"
-    end
+-- Replace the GetClosestTargetToCursor function with this more aggressive version:
+GetClosestTargetToCursor = function()
+  local closestPlayer = nil
+  local closestDistance = math.huge
+  local character = LocalPlayer.Character
+  
+  if not character or not character:FindFirstChild("HumanoidRootPart") then 
+    return nil 
   end
+  
+  local rootPart = character.HumanoidRootPart
+  local viewportSize = Camera.ViewportSize
+  local screenCenter = Vector2.new(viewportSize.X/2, viewportSize.Y/2)
 
-  --------------------------------------------------------------------
-  -- 3) FRAMEWORK STATE MANAGEMENT ----------------------------------
-  --------------------------------------------------------------------
-  local Framework = {
-    -- Core State
-    Enabled = false,
-    CurrentTarget = nil,
-    TargetPlayer = nil,
-    LockedTarget = nil,              -- From working script
-    
-    -- Visual Elements
-    FOVCircle = nil,
-    TargetHighlight = nil,
-    TracerLine = nil,
-    MobileGUI = nil,
-    
-    -- Performance
-    LastUpdate = 0,
-    UpdateInterval = 1 / CONFIG.UpdateRate,
-  }
-
-  --------------------------------------------------------------------
-  -- 4) ENHANCED TARGET SYSTEM (From Working Script) ---------------
-  --------------------------------------------------------------------
-  local TargetSystem = {
-    -- Enhanced function from working controller script
-    GetClosestTargetToCursor = function()
-      local closestPlayer = nil
-      local closestDistance = math.huge
-      local character = LocalPlayer.Character
+  for _, player in pairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer and player.Character then
+      local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+      local targetRoot = player.Character:FindFirstChild("HumanoidRootPart")
       
-      if not character or not character:FindFirstChild("HumanoidRootPart") then 
-        return nil 
-      end
-      
-      local rootPart = character.HumanoidRootPart
-      local viewportSize = Camera.ViewportSize
-      local screenCenter = Vector2.new(viewportSize.X/2, viewportSize.Y/2)
-
-      for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and 
-           player.Character and 
-           player.Character:FindFirstChild("HumanoidRootPart") and 
-           player.Character:FindFirstChild("Humanoid") and 
-           player.Character.Humanoid.Health > 0 then
-          
-          local targetRoot = player.Character.HumanoidRootPart
-          local distToPlayer = (targetRoot.Position - rootPart.Position).Magnitude
-          
-          if distToPlayer <= CONFIG.DaHood.LockDistance then
-            local screenPos, onScreen = Camera:WorldToViewportPoint(targetRoot.Position)
-            
-            if onScreen then
-              local screenPoint = Vector2.new(screenPos.X, screenPos.Y)
-              local distToCursor = (screenPoint - screenCenter).Magnitude
-              
-              if distToCursor < closestDistance and distToCursor <= CONFIG.DaHood.FOVRadius then
-                closestDistance = distToCursor
-                closestPlayer = player
-              end
-            end
-          end
-        end
-      end
-
-      return closestPlayer
-    end,
-    
-    -- Enhanced target validation
-    IsValidTarget = function(player)
-      if not player or player == LocalPlayer then return false end
-      if not player.Character then return false end
-      
-      local character = player.Character
-      local humanoid = character:FindFirstChildOfClass("Humanoid")
-      local rootPart = character:FindFirstChild("HumanoidRootPart")
-      
-      if not humanoid or not rootPart then return false end
-      if humanoid.Health <= 0 then return false end
-      
-      -- Distance check
-      local localChar = LocalPlayer.Character
-      if not localChar or not localChar:FindFirstChild("HumanoidRootPart") then return false end
-      
-      local distance = (rootPart.Position - localChar.HumanoidRootPart.Position).Magnitude
-      if distance > CONFIG.DaHood.LockDistance then return false end
-      
-      return true
-    end,
-  }
-
-  --------------------------------------------------------------------
-  -- 5) ENHANCED CAMERA SYSTEM (From Working Script) ---------------
-  --------------------------------------------------------------------
-  local CameraSystem = {
-    -- Enhanced lock function from working controller script
-    LockOntoTarget = function(target)
-      if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then 
-        return 
-      end
-      
-      local targetRoot = target.Character.HumanoidRootPart
-
-      -- Get velocity for prediction (from working script)
-      local velocity = targetRoot.Velocity or targetRoot.AssemblyLinearVelocity
-
-      -- Calculate predicted position with velocity prediction
-      local predictedPos = targetRoot.Position + velocity * CONFIG.DaHood.PredictionMultiplier
-
-      -- Aim at predicted position plus height offset
-      local aimPosition = predictedPos + Vector3.new(0, CONFIG.DaHood.AimHeightOffset, 0)
-
-      -- Set camera CFrame to look at the predicted position (from working script)
-      local cameraCF = Camera.CFrame
-      local cameraPos = cameraCF.Position
-      local newCF = CFrame.new(cameraPos, aimPosition)
-      Camera.CFrame = newCF
-    end,
-    
-    -- Alternative smooth lock for PC/Mobile
-    SmoothLockOntoTarget = function(target)
-      if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then 
-        return 
-      end
-      
-      local targetRoot = target.Character.HumanoidRootPart
-      local velocity = targetRoot.Velocity or targetRoot.AssemblyLinearVelocity
-      local predictedPos = targetRoot.Position + velocity * CONFIG.DaHood.PredictionMultiplier
-      local aimPosition = predictedPos + Vector3.new(0, CONFIG.DaHood.AimHeightOffset, 0)
-      
-      -- Smooth transition for PC/Mobile
-      local cameraCF = Camera.CFrame
-      local cameraPos = cameraCF.Position
-      local targetCF = CFrame.new(cameraPos, aimPosition)
-      
-      Camera.CFrame = cameraCF:Lerp(targetCF, 0.2)
-    end,
-  }
-
-  --------------------------------------------------------------------
-  -- 6) ENHANCED INPUT SYSTEM (From Working Script) ----------------
-  --------------------------------------------------------------------
-  local InputSystem = {
-    Initialize = function()
-      -- PC Input
-      if Platform.IsPC then
-        UserInputService.InputBegan:Connect(function(input, gameProcessed)
-          if gameProcessed then return end
-          
-          local keyName = input.KeyCode.Name
-          if keyName == CONFIG.PC.ToggleKey then
-            if CONFIG.PC.Mode == "Toggle" then
-              Framework.Toggle()
-            else
-              Framework.SetEnabled(true)
-            end
-          elseif keyName == CONFIG.PC.HoldKey then
-            Framework.SetEnabled(true)
-          elseif keyName == CONFIG.PC.SwitchKey then
-            Framework.SwitchTarget()
-          end
-        end)
+      if humanoid and humanoid.Health > 0 and targetRoot then
+        -- Prioritize head if exists and within headshot range
+        local targetPart = player.Character:FindFirstChild("Head") or targetRoot
+        local distToPlayer = (targetRoot.Position - rootPart.Position).Magnitude
         
-        UserInputService.InputEnded:Connect(function(input, gameProcessed)
-          if gameProcessed then return end
-          
-          local keyName = input.KeyCode.Name
-          if keyName == CONFIG.PC.ToggleKey and CONFIG.PC.Mode == "Hold" then
-            Framework.SetEnabled(false)
-          elseif keyName == CONFIG.PC.HoldKey then
-            Framework.SetEnabled(false)
-          end
-        end)
-      end
-      
-      -- Enhanced Controller Input (From Working Script)
-      if Platform.IsController or Platform.HasGamepad then
-        -- Input Changed for analog triggers (from working script)
-        UserInputService.InputChanged:Connect(function(input, gameProcessed)
-          if gameProcessed then return end
-          
-          if input.UserInputType == Enum.UserInputType.Gamepad1 and 
-             input.KeyCode.Name == CONFIG.Controller.TriggerButton then
-            
-            if input.Position > CONFIG.Controller.TriggerThreshold then
-              if not Framework.Enabled then
-                Framework.LockedTarget = TargetSystem.GetClosestTargetToCursor()
-                Framework.SetEnabled(true)
-              end
-            else
-              Framework.SetEnabled(false)
-              Framework.LockedTarget = nil
-            end
-          end
-        end)
-
-        -- Input Began for digital buttons (from working script)
-        UserInputService.InputBegan:Connect(function(input, gameProcessed)
-          if gameProcessed then return end
-          
-          if input.UserInputType == Enum.UserInputType.Gamepad1 then
-            if input.KeyCode.Name == CONFIG.Controller.TriggerButton then
-              Framework.LockedTarget = TargetSystem.GetClosestTargetToCursor()
-              Framework.SetEnabled(true)
-            elseif input.KeyCode.Name == CONFIG.Controller.ToggleButton then
-              Framework.Toggle()
-            elseif input.KeyCode.Name == CONFIG.Controller.SwitchButton then
-              Framework.SwitchTarget()
-            end
-          end
-        end)
-
-        -- Input Ended (from working script)
-        UserInputService.InputEnded:Connect(function(input, gameProcessed)
-          if gameProcessed then return end
-          
-          if input.UserInputType == Enum.UserInputType.Gamepad1 and 
-             input.KeyCode.Name == CONFIG.Controller.TriggerButton then
-            Framework.SetEnabled(false)
-            Framework.LockedTarget = nil
-          end
-        end)
-      end
-    end,
-  }
-
-  --------------------------------------------------------------------
-  -- 7) VISUAL SYSTEM -----------------------------------------------
-  --------------------------------------------------------------------
-  local VisualSystem = {
-    Initialize = function()
-      -- FOV Circle
-      if CONFIG.DaHood.ShowFOV then
-        Framework.FOVCircle = Drawing.new("Circle")
-        Framework.FOVCircle.Visible = true
-        Framework.FOVCircle.Filled = false
-        Framework.FOVCircle.Thickness = 2
-        Framework.FOVCircle.Radius = CONFIG.DaHood.FOVRadius
-        Framework.FOVCircle.Color = CONFIG.DaHood.FOVColor
-        Framework.FOVCircle.Transparency = 0.8
-      end
-      
-      -- Target Highlight
-      if CONFIG.DaHood.ShowTarget then
-        Framework.TargetHighlight = Drawing.new("Circle")
-        Framework.TargetHighlight.Visible = false
-        Framework.TargetHighlight.Filled = false
-        Framework.TargetHighlight.Thickness = 3
-        Framework.TargetHighlight.Radius = 12
-        Framework.TargetHighlight.Color = CONFIG.DaHood.TargetColor
-        Framework.TargetHighlight.Transparency = 1
-      end
-    end,
-    
-    Update = function()
-      local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-      
-      -- Update FOV Circle
-      if Framework.FOVCircle then
-        Framework.FOVCircle.Position = screenCenter
-        Framework.FOVCircle.Color = Framework.Enabled and CONFIG.DaHood.FOVColor or Color3.fromRGB(100, 100, 100)
-      end
-      
-      -- Update Target Visuals
-      local currentTarget = Framework.LockedTarget or Framework.CurrentTarget
-      if currentTarget and currentTarget.Character and Framework.TargetHighlight then
-        local targetPart = currentTarget.Character:FindFirstChild("HumanoidRootPart")
-        if targetPart then
+        if distToPlayer <= CONFIG.DaHood.LockDistance then
           local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
           
           if onScreen then
-            Framework.TargetHighlight.Visible = true
-            Framework.TargetHighlight.Position = Vector2.new(screenPos.X, screenPos.Y)
-          else
-            Framework.TargetHighlight.Visible = false
+            local screenPoint = Vector2.new(screenPos.X, screenPos.Y)
+            local distToCursor = (screenPoint - screenCenter).Magnitude
+            
+            -- Aggressive FOV prioritization with distance scaling
+            local effectiveFOV = CONFIG.DaHood.FOVRadius * (1 - math.clamp(distToPlayer/200, 0, 0.7))
+            
+            if distToCursor < closestDistance and distToCursor <= effectiveFOV then
+              closestDistance = distToCursor
+              closestPlayer = player
+            end
           end
         end
-      else
-        if Framework.TargetHighlight then Framework.TargetHighlight.Visible = false end
-      end
-    end,
-  }
-
-  --------------------------------------------------------------------
-  -- 8) MOBILE GUI SYSTEM -------------------------------------------
-  --------------------------------------------------------------------
-  local MobileGUI = {
-    Create = function()
-      if not Platform.IsMobile or not CONFIG.Mobile.ShowButton then return end
-      
-      -- Create ScreenGui
-      local screenGui = Instance.new("ScreenGui")
-      screenGui.Name = "CamlockMobile"
-      screenGui.ResetOnSpawn = false
-      screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-      
-      -- Create Hold Button (Main)
-      local holdButton = Instance.new("TextButton")
-      holdButton.Name = "CamlockHold"
-      holdButton.Parent = screenGui
-      holdButton.Size = CONFIG.Mobile.ButtonSize
-      holdButton.Position = CONFIG.Mobile.ButtonPosition
-      holdButton.BackgroundColor3 = CONFIG.Mobile.ButtonColor
-      holdButton.BorderSizePixel = 0
-      holdButton.Text = "HOLD\nCAM"
-      holdButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-      holdButton.TextScaled = true
-      holdButton.Font = Enum.Font.SourceSansBold
-      holdButton.ZIndex = 10
-      
-      -- Create Toggle Button
-      local toggleButton = Instance.new("TextButton")
-      toggleButton.Name = "CamlockToggle"
-      toggleButton.Parent = screenGui
-      toggleButton.Size = UDim2.new(0, 60, 0, 60)
-      toggleButton.Position = UDim2.new(0, 110, 0.3, 0)
-      toggleButton.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
-      toggleButton.BorderSizePixel = 0
-      toggleButton.Text = "TOG"
-      toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-      toggleButton.TextScaled = true
-      toggleButton.Font = Enum.Font.SourceSansBold
-      toggleButton.ZIndex = 10
-      
-      -- Styling for both buttons
-      for _, button in pairs({holdButton, toggleButton}) do
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0.5, 0)
-        corner.Parent = button
-        
-        local stroke = Instance.new("UIStroke")
-        stroke.Color = Color3.fromRGB(255, 255, 255)
-        stroke.Thickness = 2
-        stroke.Parent = button
-      end
-      
-      -- Hold Button Events
-      holdButton.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then
-          Framework.LockedTarget = TargetSystem.GetClosestTargetToCursor()
-          Framework.SetEnabled(true)
-        end
-      end)
-      
-      holdButton.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then
-          Framework.SetEnabled(false)
-          Framework.LockedTarget = nil
-        end
-      end)
-      
-      -- Toggle Button Events
-      toggleButton.MouseButton1Click:Connect(Framework.Toggle)
-      
-      Framework.MobileGUI = {
-        ScreenGui = screenGui,
-        HoldButton = holdButton,
-        ToggleButton = toggleButton,
-        UpdateVisuals = function()
-          if Framework.Enabled then
-            holdButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-            holdButton.Text = "CAM\nON"
-            toggleButton.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-          else
-            holdButton.BackgroundColor3 = CONFIG.Mobile.ButtonColor
-            holdButton.Text = "HOLD\nCAM"
-            toggleButton.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
-          end
-        end
-      }
-      
-      screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-    end,
-  }
-
-  --------------------------------------------------------------------
-  -- 9) FRAMEWORK CORE FUNCTIONS -----------------------------------
-  --------------------------------------------------------------------
-  Framework.Toggle = function()
-    Framework.SetEnabled(not Framework.Enabled)
-  end
-
-  Framework.SetEnabled = function(state)
-    Framework.Enabled = state
-    
-    if not state then
-      Framework.CurrentTarget = nil
-      Framework.LockedTarget = nil
-    end
-    
-    -- Update mobile GUI
-    if Framework.MobileGUI then
-      Framework.MobileGUI.UpdateVisuals()
-    end
-  end
-
-  Framework.SwitchTarget = function()
-    if not Framework.Enabled then return end
-    
-    -- Force find new target
-    Framework.CurrentTarget = nil
-    Framework.LockedTarget = TargetSystem.GetClosestTargetToCursor()
-  end
-
-  --------------------------------------------------------------------
-  -- 10) MAIN LOOP (Enhanced from Working Script) ------------------
-  --------------------------------------------------------------------
-  local function MainLoop()
-    -- Use RenderStepped for controller (from working script)
-    if Platform.Type == "Controller" then
-      if Framework.Enabled and Framework.LockedTarget and 
-         Framework.LockedTarget.Character and 
-         Framework.LockedTarget.Character:FindFirstChild("HumanoidRootPart") and 
-         Framework.LockedTarget.Character:FindFirstChild("Humanoid") and 
-         Framework.LockedTarget.Character.Humanoid.Health > 0 then
-        
-        CameraSystem.LockOntoTarget(Framework.LockedTarget)
-      else
-        Framework.LockedTarget = nil
-      end
-    else
-      -- PC/Mobile logic
-      if Framework.Enabled then
-        local target = Framework.CurrentTarget or TargetSystem.GetClosestTargetToCursor()
-        if target then
-          Framework.CurrentTarget = target
-          CameraSystem.SmoothLockOntoTarget(target)
-        end
       end
     end
-    
-    -- Update visuals
-    VisualSystem.Update()
   end
 
-  --------------------------------------------------------------------
-  -- 11) INITIALIZATION ---------------------------------------------
-  --------------------------------------------------------------------
-  local function Initialize()
-    print(string.format(
-      "[Da Hood Camlock v2.1] Platform: %s | Prediction: %.2f | Distance: %d",
-      Platform.Type,
-      CONFIG.DaHood.PredictionMultiplier,
-      CONFIG.DaHood.LockDistance
-    ))
-    
-    -- Initialize systems
-    VisualSystem.Initialize()
-    InputSystem.Initialize()
-    MobileGUI.Create()
-    
-    -- Start main loop with appropriate method
-    if Platform.Type == "Controller" then
-      RunService.RenderStepped:Connect(MainLoop)  -- From working script
-    else
-      RunService.Heartbeat:Connect(MainLoop)
+  return closestPlayer
+end,
+
+-- In the CameraSystem, update the lock functions:
+LockOntoTarget = function(target)
+  -- ... existing code ...
+  local predictionMultiplier = CONFIG.DaHood.PredictionMultiplier
+  
+  -- Increase prediction when target is moving fast
+  local speed = velocity.Magnitude
+  if speed > 30 then
+    predictionMultiplier = predictionMultiplier + (speed/100 * 0.15)
+  end
+  
+  local predictedPos = targetPart.Position + velocity * predictionMultiplier
+  -- ... rest of function ...
+end,
+
+SmoothLockOntoTarget = function(target)
+  -- ... existing code ...
+  local predictionMultiplier = CONFIG.DaHood.PredictionMultiplier
+  
+  -- Dynamic prediction based on speed
+  local speed = velocity.Magnitude
+  if speed > 25 then
+    predictionMultiplier = predictionMultiplier + (speed/80 * 0.1)
+  end
+  
+  local predictedPos = targetPart.Position + velocity * predictionMultiplier
+  -- ... rest of function ...
+  
+  -- Increase lerp speed for more aggressive tracking
+  Camera.CFrame = cameraCF:Lerp(targetCF, 0.35)  -- Increased from 0.2
+end,
+
+-- Add this new function for visual tracer:
+CreateTracer = function()
+  if Framework.TracerLine then Framework.TracerLine:Remove() end
+  Framework.TracerLine = Drawing.new("Line")
+  Framework.TracerLine.Visible = false
+  Framework.TracerLine.Thickness = 1
+  Framework.TracerLine.Color = Color3.fromRGB(255, 50, 50)
+end,
+
+-- Add to VisualSystem.Initialize():
+if CONFIG.DaHood.ShowTracer then
+  VisualSystem.CreateTracer()
+end
+
+-- Add to VisualSystem.Update():
+-- Tracer visualization
+if Framework.TracerLine then
+  Framework.TracerLine.Visible = false
+  local currentTarget = Framework.LockedTarget or Framework.CurrentTarget
+  if currentTarget and Framework.Enabled then
+    local targetPart = currentTarget.Character:FindFirstChild("Head") or 
+                      currentTarget.Character:FindFirstChild("HumanoidRootPart")
+    if targetPart then
+      local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+      if onScreen then
+        Framework.TracerLine.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+        Framework.TracerLine.To = Vector2.new(screenPos.X, screenPos.Y)
+        Framework.TracerLine.Visible = true
+      end
     end
-    
-    -- Global access
-    getgenv().DaHoodCamlock = {
-      Framework = Framework,
-      Config = CONFIG,
-      Platform = Platform,
-      Toggle = Framework.Toggle,
-      SetEnabled = Framework.SetEnabled,
-      GetTarget = function() return Framework.LockedTarget or Framework.CurrentTarget end,
-      IsEnabled = function() return Framework.Enabled end,
-    }
   end
-
-  --------------------------------------------------------------------
-  -- 12) CLEANUP & ERROR HANDLING -----------------------------------
-  --------------------------------------------------------------------
-  local function Cleanup()
-    if Framework.FOVCircle then Framework.FOVCircle:Remove() end
-    if Framework.TargetHighlight then Framework.TargetHighlight:Remove() end
-    if Framework.MobileGUI then Framework.MobileGUI.ScreenGui:Destroy() end
-  end
-
-  Players.PlayerRemoving:Connect(function(player)
-    if player == LocalPlayer then
-      Cleanup()
-    end
-  end)
-
-  -- Start the framework
-  Initialize()
-
-  return getgenv().DaHoodCamlock
+end
